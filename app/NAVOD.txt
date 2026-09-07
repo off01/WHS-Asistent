@@ -1,0 +1,16 @@
+WHS ASISTENT
+Rozbalte cely ZIP. Spustte WHS-Asistent.bat.
+Vyžaduje Python 3.10+ s prikazem py, Microsoft Edge a sitovy pristup pro prvni instalaci zavislosti a EdgeDriveru.
+Prvni spusteni pripravi prostredi. Pokud konfigurace chybi nebo nema instance, automaticky se spusti pruvodce pro instance, login a heslo. Pozdejsi upravy provedte v data/config.json pri vypnutem nastroji. Poskozena konfigurace se neprepisuje.
+Volba 2 je kontrola bez zmen, volba 1 skutecne potvrzuje instalace.
+Po ostre davce se vypise blok pro Teams: WHS_SO_... dokončeno. Obsahuje pouze objednavky s overenym cilovym stavem, vcetne jiz dokoncenych. Kontrolni rezim takovy vystup nevytvari.
+Po zobrazeni textu pro Teams program pocka na Enter, nez nabidne dalsi davku. Edge zustava otevreny ve stejne relaci.
+SMS dokoncete v Edge. Prehled se rozpozna automaticky a Edge se minimalizuje.
+Vlozte WHS order nebo celou zpravu. Prazdny radek uzavre davku; zpracovani potvrdte y nebo Y, odmitnete n nebo N.
+Ctrl+C pri zpracovani zavre Edge a vrati hlavni nabidku. Ctrl+C v hlavni nabidce ukonci program.
+Mezi davkami ponechte zpracovani bezet, pouziva stejnou relaci. Pri novem spusteni je nove prihlaseni.
+Konfigurace a vysledky jsou ve slozce data. Heslo je v config.json ulozene jako text; soubor nesdilejte.
+Vysledky.jsonl nemazte: chrani pred opakovanim nejisteho odeslani. Po ztrate historie kontrolujte stav v PIP.
+Pri chybe se ukaze Edge. Nejisty vysledek po Ano se neopakuje. Jiz dosazeny cilovy stav se preskoci.
+Prototyp pouziva selektory dodane v konverzaci. Jejich zmena v PIP muze vyzadovat upravu.
+Obnovena verze byla overena lokalnimi testy, nikoli novym zivym pruchodem PIP.
