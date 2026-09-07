@@ -4,6 +4,7 @@ import os
 import re
 import signal
 import subprocess
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from whs_asistent import DATA, read_config, valid_url
@@ -13,6 +14,12 @@ SUCCESS = 'Úspěšně provedena'
 TARGET = 'WHS Instalace - Čeká se na odpověď WHS partnera'
 SOURCE = 'WHS Instalace - Čeká na přiřazení'
 INSTALL = 'Instalace WHS - Zásuvka'
+SEARCH_RETRIES = 5
+SEARCH_RETRY_DELAY = 60
+
+
+class OrderNotFound(RuntimeError):
+    """The search completed without a visible result."""
 
 
 def extract_ids(text):
@@ -185,7 +192,8 @@ class Pip:
         self.identity(order)
         return self.status() == TARGET and not self.visible(f"//div[@class='wxpButtonText' and normalize-space(.)='{INSTALL}']")
 
-    def open_order(self, order):
+    def search_once(self, order):
+        from selenium.common.exceptions import TimeoutException
         from selenium.webdriver.common.keys import Keys
         self.overview()
         self.check_origin()
@@ -198,8 +206,36 @@ class Pip:
         self.text('wxpButtonText', 'Hledat').click()
         def result(_):
             rows = self.visible("//*[@id='stdList157_TB']/tbody/tr[contains(@class,'wxpListBoxRow')]")
+            if len(rows) > 1:
+                raise RuntimeError('Nalezeno vice vysledku. Overte WHS objednavku rucne.')
             return rows[0] if len(rows) == 1 else False
-        row = self.wait.until(result, 'Nenalezen prave jeden vysledek.')
+        try:
+            return self.wait.until(result, 'WHS objednavka nebyla nalezena.')
+        except TimeoutException:
+            # Do not treat logout, a missing table or another page as zero results.
+            self.check_origin()
+            if self.logged_out():
+                raise RuntimeError('Prihlaseni vyprselo behem hledani.') from None
+            self.by_id('stdList157_TB')
+            row = result(self.d)
+            if row:
+                return row
+            raise OrderNotFound(order) from None
+
+    def find_order(self, order):
+        for attempt in range(SEARCH_RETRIES + 1):
+            try:
+                return self.search_once(order)
+            except OrderNotFound:
+                remaining = SEARCH_RETRIES - attempt
+                notice(f'{order} se nepodařilo najít. Zbývá opakování: {remaining}.', 'warning')
+                if not remaining:
+                    raise
+                print(f'Další hledání za {SEARCH_RETRY_DELAY} sekund.', flush=True)
+                time.sleep(SEARCH_RETRY_DELAY)
+
+    def open_order(self, order):
+        row = self.find_order(order)
         cells = self.visible(".//div[@class='wxpListBoxText']", row)
         if not cells:
             raise RuntimeError('Chybi bunka vysledku.')
@@ -209,7 +245,11 @@ class Pip:
         self.by_id('stdDropDownListField512_T')
 
     def process(self, order, execute):
-        self.open_order(order)
+        try:
+            self.open_order(order)
+        except OrderNotFound:
+            notice(f'{order} NEDOHLEDANO – ověřte WHS objednávku ručně v systému.', 'warning')
+            return 'NEDOHLEDANO'
         if self.completed(order):
             return 'JIZ_HOTOVO'
         if self.journal.uncertain(order):
@@ -312,7 +352,8 @@ def main():
                     result = pip.process_with_session(order, args.execute)
                     journal.write(order, result)
                     results.append((order, result))
-                    print(order, accent(result, 'success'))
+                    if result != 'NEDOHLEDANO':
+                        print(order, accent(result, 'success'))
                     pip.overview()
                 except KeyboardInterrupt:
                     print_teams(results, args.execute)

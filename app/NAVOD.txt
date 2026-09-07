@@ -12,5 +12,6 @@ Mezi davkami ponechte zpracovani bezet, pouziva stejnou relaci. Pri novem spuste
 Konfigurace a vysledky jsou ve slozce data. Heslo je v config.json ulozene jako text; soubor nesdilejte.
 Vysledky.jsonl nemazte: chrani pred opakovanim nejisteho odeslani. Po ztrate historie kontrolujte stav v PIP.
 Pri chybe se ukaze Edge. Nejisty vysledek po Ano se neopakuje. Jiz dosazeny cilovy stav se preskoci.
+Pokud hledani vrati prazdny vysledek, zopakuje se az 5x po 60 sekundach (celkem 6 hledani). Kazde hledani navic ceka na vysledek podle timeoutu. CLI vypisuje zbyvajici opakovani; Ctrl+C prerusi i cekani. Po vycerpani se zapise NEDOHLEDANO s vyzvou k rucnimu overeni a davka pokracuje dalsi WHS objednavkou. Nedohledane objednavky se neuvadeji ve zpravach o dokonceni. Vice vysledku nebo chyba stranky se nepovazuji za prazdny vysledek.
 Prototyp pouziva selektory dodane v konverzaci. Jejich zmena v PIP muze vyzadovat upravu.
 Obnovena verze byla overena lokalnimi testy, nikoli novym zivym pruchodem PIP.
