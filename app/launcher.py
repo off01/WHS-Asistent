@@ -3,17 +3,20 @@ import sys
 from pathlib import Path
 from console_style import notice
 from whs_asistent import read_config
+from cli_help import show_help
 
 APP = Path(__file__).resolve().parent
 
 
 def run_child(command):
     with subprocess.Popen(command) as process:
-        try:
-            return process.wait()
-        except KeyboardInterrupt:
-            # Console Ctrl+C reaches the child too; let it close Edge cleanly.
-            return process.wait()
+        while True:
+            try:
+                return process.wait()
+            except KeyboardInterrupt:
+                # The child handles interruption, including a paused batch.
+                # Repeated Ctrl+C must not terminate the waiting launcher.
+                continue
 
 
 def main():
@@ -25,8 +28,10 @@ def main():
             return
     while True:
         notice("\nWHS ASISTENT")
-        print("1 - Zpracovat WHS objednávky\n2 - Kontrola bez zmen\nCtrl+C - Ukoncit")
+        print("1 - Zpracovat WHS objednávky\n2 - Kontrola bez zmen\n--help / --h - Nápověda\nCtrl+C - Ukoncit")
         choice = input("Vyberte: ").strip()
+        if show_help(choice):
+            continue
         if choice not in ("1", "2"):
             continue
         command = [sys.executable, str(APP / "pip_tool.py")]

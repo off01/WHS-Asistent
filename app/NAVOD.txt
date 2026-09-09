@@ -2,16 +2,26 @@ WHS ASISTENT
 Rozbalte cely ZIP. Spustte WHS-Asistent.bat.
 Vyžaduje Python 3.10+ s prikazem py, Microsoft Edge a sitovy pristup pro prvni instalaci zavislosti a EdgeDriveru.
 Prvni spusteni pripravi prostredi. Pokud konfigurace chybi nebo nema instance, automaticky se spusti pruvodce pro instance, login a heslo. Pozdejsi upravy provedte v data/config.json pri vypnutem nastroji. Poskozena konfigurace se neprepisuje.
-Volba 2 je kontrola bez zmen, volba 1 skutecne potvrzuje instalace.
+Volba 1 je jednotny vicekrokovy proces: realizace zasuvky, po registraci CM instalace HW a uzavreni. Volba 2 kontroluje bez zmen.
+Poradi kroku: Ceka na prirazeni -> instalace zasuvky -> Ceka se na odpoved WHS partnera -> Registrace CM provedena -> instalace HW a uzavreni. Ve stavu Ceka se na odpoved WHS partnera se HW neprovadi, ani pokud by ho PIP umoznoval. Rezim HW registraci CM nepreskakuje; stav kontroluje i pred odeslanim potvrzeni HW.
+Pred instalaci HW musi pole MAC adresy obsahovat nejaky udaj. Kontroluje se pouze neprazdny text po odebrani okolnich mezer, nikoli format MAC adresy. Prazdne pole instalaci HW zablokuje i pri spravnem stavu Registrace CM provedena.
+Protoze stav Registrace CM provedena zustava stejny, novy rezim po instalaci HW a po uzavreni ukaze Edge a vyzada overeni vysledku [y/n]. Pred potvrzenim ponechte otevreny detail stejne WHS objednavky bez modalu. Pouhe zavreni dialogu neni dukazem uspechu. Teprve potvrzene uzavreni se objevi ve Zpravach o dokonceni. Automaticke overeni bude mozne doplnit podle jednoznacneho znaku uspesneho uzavreni v PIP.
 Po ostre davce se vypise blok pro Teams: WHS_SO_... dokončeno. Obsahuje pouze objednavky s overenym cilovym stavem, vcetne jiz dokoncenych. Kontrolni rezim takovy vystup nevytvari.
 Po zobrazeni textu pro Teams program pocka na Enter, nez nabidne dalsi davku. Edge zustava otevreny ve stejne relaci.
 SMS dokoncete v Edge. Prehled se rozpozna automaticky a Edge se minimalizuje.
 Vlozte WHS order nebo celou zpravu. Prazdny radek uzavre davku; zpracovani potvrdte y nebo Y, odmitnete n nebo N.
-Ctrl+C pri zpracovani zavre Edge a vrati hlavni nabidku. Ctrl+C v hlavni nabidce ukonci program.
-Mezi davkami ponechte zpracovani bezet, pouziva stejnou relaci. Pri novem spusteni je nove prihlaseni.
+WHS order musi obsahovat WHS_SO_ a presne 11 cislic (celkem 18 znaku). Pokud davka obsahuje chybny identifikator, nespusti se a vypise problematicke hodnoty k oprave. Pri prekresleni stranky se prvky znovu nacitaji a ceka se na jejich pripravenost. Zaverecne potvrzeni Ano se automaticky neopakuje.
+Ctrl+C behem davky prerusi automat a ponecha Edge otevreny pro kontrolu. CLI nabidne preskoceni aktualni objednavky a pokracovani zbyvajicimi po overenem navratu na prehled. Aktualni objednavku automaticky neopakuje. Pokud nechcete pokracovat, zepta se na zavreni prohlizece [y/n]; n vrati zadavani nove davky ve stejne relaci. Ctrl+C pri zadavani nove davky zavre Edge. Ctrl+C v hlavni nabidce ukonci program.
 Konfigurace a vysledky jsou ve slozce data. Heslo je v config.json ulozene jako text; soubor nesdilejte.
 Vysledky.jsonl nemazte: chrani pred opakovanim nejisteho odeslani. Po ztrate historie kontrolujte stav v PIP.
 Pri chybe se ukaze Edge. Nejisty vysledek po Ano se neopakuje. Jiz dosazeny cilovy stav se preskoci.
+Pri chybe uvnitr davky se skript zepta, zda aktualni WHS objednavku preskocit a pokracovat dalsimi [y/n]. Po rucnim overeni objednavky, zavreni modalu a navratu na prehled potvrzenem Enterem overi prehled a pri y/Y pokracuje. Chybna objednavka se neopakuje. Pri n/N nebo neuspesnem overeni prehledu se zbytek davky nespusti. Zpravy o dokonceni zachovavaji vsechny overene uspechy z davky.
 Pokud hledani vrati prazdny vysledek, zopakuje se az 5x po 60 sekundach (celkem 6 hledani). Kazde hledani navic ceka na vysledek podle timeoutu. CLI vypisuje zbyvajici opakovani; Ctrl+C prerusi i cekani. Po vycerpani se zapise NEDOHLEDANO s vyzvou k rucnimu overeni a davka pokracuje dalsi WHS objednavkou. Nedohledane objednavky se neuvadeji ve zpravach o dokonceni. Vice vysledku nebo chyba stranky se nepovazuji za prazdny vysledek.
 Prototyp pouziva selektory dodane v konverzaci. Jejich zmena v PIP muze vyzadovat upravu.
 Obnovena verze byla overena lokalnimi testy, nikoli novym zivym pruchodem PIP.
+Zadejte WHS_SO_08000006785 pro cely postup, nebo WHS_SO_08000006785 --realizace pouze pro realizaci zasuvky. V jedne davce lze kombinovat oba rozsahy, nejlepe po jednom WHS na radek. Neznamy parametr nebo stejne WHS ve dvou rezimech odmitne celou davku.
+Pri stavu Ceka se na odpoved WHS partnera proces vypise CEKA_NA_CM a pokracuje dalsim WHS. Po registraci CM zadejte ID znovu pro navazani HW. Objednavka cekajici na CM se nepovazuje za plne dokoncenou.
+Vystup pro samotnou realizaci je WHS_SO_... realizace dokoncena; WHS_SO_... dokonceno patri v celem procesu az overenemu uzavreni. HW i uzavreni zatim vyzaduji rucni overeni vysledku y/n. Historie jednotlivych kroku zustava oddelena.
+Zkratka --r znamena totez co --realizace. Napovedu s parametry a priklady zobrazite prikazem --help nebo --h na samostatnem radku v menu i pri zadavani WHS. Rozepsana davka se pri napovede neztrati. Funguje take app/pip_tool.py --help / --h pred otevrenim prohlizece.
+Pri zadavani WHS lze sipkami nahoru a dolu vybirat predchozi prikazy vcetne --r. Historie zustava mezi davkami v ramci jednoho zpracovani, po jeho ukonceni se vymaze. Hesla ani potvrzeni y/n se neukladaji. WHS-Asistent.bat pri pristim spusteni automaticky doinstaluje knihovnu prompt-toolkit.
+Kazde spusteni zpracovani otevre novy Edge s docasnym profilem a vyzaduje prihlaseni vcetne SMS podle PIP. Mezi davkami se pouziva stejny otevreny prohlizec. Pri ukonceni zpracovani se Edge zavre bez dotazu na ponechani relace. Ctrl+C behem davky nadale pouze prerusi automat. Obnova relace ani pripojovani ke starsimu oknu se nepouzivaji; stare profily v data/browser_sessions aplikace ignoruje.

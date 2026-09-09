@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from whs_asistent import DATA, read_config, valid_url
 from console_style import notice, accent
+from browser import open_browser
+from cli_help import USAGE, show_help
+from order_input import OrderInput
 
 SUCCESS = 'Úspěšně provedena'
 TARGET = 'WHS Instalace - Čeká se na odpověď WHS partnera'
@@ -16,6 +19,20 @@ SOURCE = 'WHS Instalace - Čeká na přiřazení'
 INSTALL = 'Instalace WHS - Zásuvka'
 SEARCH_RETRIES = 5
 SEARCH_RETRY_DELAY = 60
+ORDER_PREFIXES = ('WHS Instalace - ', 'WHS HFC Instalace - ')
+
+
+def status_xpath():
+    matches = ' or '.join(f"starts-with(normalize-space(.),'{prefix}')" for prefix in ORDER_PREFIXES)
+    return f'//*[({matches}) and not(.//*[{matches}])]'
+
+
+def status_value(header):
+    header = ' '.join(header.split())
+    for prefix in ORDER_PREFIXES:
+        if header.startswith(prefix):
+            return header[len(prefix):]
+    raise ValueError('Nepodporovany typ WHS objednavky: ' + header)
 
 
 class OrderNotFound(RuntimeError):
@@ -23,14 +40,43 @@ class OrderNotFound(RuntimeError):
 
 
 def extract_ids(text):
-    return list(dict.fromkeys(re.findall(r'(?<!\w)WHS_SO_[0-9]+(?!\w)', text.replace('\\_', '_'))))
+    candidates = list(dict.fromkeys(re.findall(r'(?<!\w)WHS_SO_\w*', text.replace('\\_', '_'))))
+    invalid = [value for value in candidates if not re.fullmatch(r'WHS_SO_[0-9]{11}', value)]
+    if invalid:
+        raise ValueError('Neplatný WHS order: ' + ', '.join(invalid) +
+                         '. Očekávám WHS_SO_ a přesně 11 číslic (např. WHS_SO_08000006785). Dávka nebyla spuštěna.')
+    return candidates
+
+
+def extract_orders(text):
+    text = text.replace('\\_', '_')
+    ids = extract_ids(text)
+    orders = {}
+    consumed = []
+    for match in re.finditer(r'(?<!\w)(WHS_SO_[0-9]{11})(?!\w)([ \t]+--(?:realizace|r)(?=$|\s|[,;]))?', text):
+        order, flag = match.groups()
+        mode = 'realizace' if flag else 'all'
+        if order in orders and orders[order] != mode:
+            raise ValueError(f'{order} má dva různé režimy. Uveďte jej pouze v jednom režimu.')
+        orders[order] = mode
+        if flag:
+            consumed.append((match.start(2), match.end(2)))
+    remainder = text
+    for start, end in reversed(consumed):
+        remainder = remainder[:start] + remainder[end:]
+    if re.search(r'--\S+', remainder):
+        raise ValueError('Neplatný parametr. Použijte WHS_SO_08000006785 --r pro samotnou realizaci. Nápověda: --help.')
+    return {order: orders[order] for order in ids}
 
 
 def teams_text(results, execute):
     if not execute:
         return ''
     completed = dict.fromkeys(order for order, result in results if result in ('HOTOVO', 'JIZ_HOTOVO'))
-    return '\n'.join(f'{order} dokončeno' for order in completed)
+    lines = [f'{order} dokončeno' for order in completed]
+    lines.extend(f'{order} realizace dokončena' for order in dict.fromkeys(
+        order for order, result in results if result == 'REALIZACE_HOTOVO') if order not in completed)
+    return '\n'.join(lines)
 
 
 def print_teams(results, execute):
@@ -39,6 +85,55 @@ def print_teams(results, execute):
         notice('\nZprávy o dokončení')
         print(text)
         print()
+
+
+def recover_batch(pip, remaining):
+    proceed = False
+    if remaining:
+        while True:
+            answer = input('Přeskočit tuto WHS objednávku a pokračovat dalšími? [y/n]: ').strip().lower()
+            if answer in ('y', 'n'):
+                proceed = answer == 'y'
+                break
+    input('Ověřte aktuální WHS objednávku v Edge, zavřete případný modál a vraťte se na přehled. Pak Enter: ')
+    try:
+        pip.check_origin()
+        pip.ready_overview()
+        pip.hide()
+    except Exception:
+        notice('Přehled se nepodařilo ověřit. Zbytek dávky nebyl spuštěn.', 'error')
+        return False
+    return proceed
+
+
+def pause_batch(pip, remaining):
+    notice('\nZpracování přerušeno. Prohlížeč zůstává otevřený.', 'warning')
+    pip.show()
+    print('Aktuální WHS objednávku ověřte ručně; nebude automaticky opakována.')
+    print('Zbývající WHS objednávky:', ', '.join(remaining) or 'žádné')
+    while True:
+        try:
+            if remaining:
+                answer = input('Přeskočit aktuální WHS objednávku a pokračovat dalšími? [y/n]: ').strip().lower()
+                if answer not in ('y', 'n'):
+                    continue
+                if answer == 'y':
+                    input('Zavřete případný modál a vraťte se na přehled v Edge. Pak Enter: ')
+                    try:
+                        pip.check_origin()
+                        pip.ready_overview()
+                        pip.hide()
+                    except Exception:
+                        notice('Přehled nelze ověřit. Zpracování zůstává přerušené.', 'warning')
+                        continue
+                    return 'continue'
+            answer = input('Ukončit zpracování a zavřít prohlížeč? [y/n]: ').strip().lower()
+            if answer == 'y':
+                return 'exit'
+            if answer == 'n':
+                return 'new_batch'
+        except KeyboardInterrupt:
+            notice('Zpracování je přerušené. Prohlížeč zůstává otevřený.', 'warning')
 
 
 def origin(url):
@@ -113,11 +208,53 @@ class Pip:
     def text(self, cls, label, scope=None):
         return self.one(f".//div[@class='{cls}' and normalize-space(.)='{label}']", scope)
 
+    def interact(self, locate, action, label):
+        from selenium.common.exceptions import (StaleElementReferenceException,
+                                                ElementNotInteractableException,
+                                                ElementClickInterceptedException)
+        def attempt(_):
+            try:
+                element = locate()
+                if not element or not element.is_displayed() or not element.is_enabled():
+                    return False
+                action(element)
+                return True
+            except (StaleElementReferenceException, ElementNotInteractableException, ElementClickInterceptedException):
+                return False
+        self.wait.until(attempt, 'Prvek není připraven: ' + label)
+
+    def read(self, action):
+        # A tuple preserves false/empty results while retrying stale reads.
+        return self.wait.until(lambda _: (action(),))[0]
+
+    def click_text(self, cls, label):
+        self.interact(lambda: self.text(cls, label), lambda e: e.click(), label)
+
+    def ready_overview(self):
+        def ready(_):
+            self.check_origin()
+            if self.visible("//*[@id='NGMODALWINDOW_CURTAIN']"):
+                return False
+            fields = self.visible("//*[@id='stdEditField84_T']")
+            if len(fields) != 1:
+                return False
+            field = fields[0]
+            return field if field.is_enabled() and not field.get_property('readOnly') else False
+        return self.wait.until(ready, 'Vyhledávací pole na přehledu není připravené.')
+
     def show(self):
-        self.d.maximize_window()
+        from selenium.common.exceptions import WebDriverException
+        try:
+            self.d.maximize_window()
+        except WebDriverException:
+            notice('Edge nelze automaticky zobrazit. Otevřete jeho okno ručně přes hlavní panel.', 'warning')
 
     def hide(self):
-        self.d.minimize_window()
+        from selenium.common.exceptions import WebDriverException
+        try:
+            self.d.minimize_window()
+        except WebDriverException:
+            notice('Edge nelze minimalizovat. Zpracování pokračuje s otevřeným oknem.', 'warning')
 
     def check_origin(self):
         if origin(self.d.current_url) != origin(self.entry['url']):
@@ -176,36 +313,64 @@ class Pip:
 
     def overview(self):
         if not self.visible("//*[@id='stdEditField84_T']"):
-            self.by_id('weAppButton284_I').click()
-            self.by_id('stdEditField84_T')
+            self.interact(lambda: self.by_id('weAppButton284_I'), lambda e: e.click(), 'Zpět na přehled')
+        self.ready_overview()
 
     def identity(self, order):
         self.check_origin()
-        if self.by_id('stdText332_T').text.strip() != order:
+        if self.read(lambda: self.by_id('stdText332_T').text.strip()) != order:
             raise RuntimeError('Detail neodpovida zadanemu WHS ID.')
 
     def status(self):
-        prefix = "starts-with(normalize-space(.),'WHS Instalace - ')"
-        return ' '.join(self.one(f'//*[{prefix} and not(.//*[{prefix}])]').text.split())
+        return self.read(lambda: ' '.join(self.one(status_xpath()).text.split()))
 
     def completed(self, order):
         self.identity(order)
-        return self.status() == TARGET and not self.visible(f"//div[@class='wxpButtonText' and normalize-space(.)='{INSTALL}']")
+        state = status_value(self.status())
+        if state not in (status_value(TARGET), 'Registrace CM provedena'):
+            return False
+        if self.read(lambda: self.visible(f"//div[@class='wxpButtonText' and normalize-space(.)='{INSTALL}']")):
+            return False
+        if state == 'Registrace CM provedena':
+            return self.read(lambda: self.by_id('stdDropDownListField512_T').get_property('value')) == SUCCESS
+        return True
+
+    def result_table(self):
+        # Locate the smallest section containing the order-list headings. The
+        # generated numeric control ID can change when PIP rebuilds its page.
+        headings = (".//*[starts-with(normalize-space(.),'Objednávka') and not(*)] and "
+                    ".//*[normalize-space(.)='Typ' and not(*)] and "
+                    ".//*[normalize-space(.)='Stav' and not(*)]")
+        sections = f"//*[{headings} and not(.//*[{headings}])]"
+        xpath = (f"({sections})/descendant-or-self::table["
+                 "substring(@id,string-length(@id)-2)='_TB']")
+        def find(_):
+            tables = self.visible(xpath)
+            if not tables:
+                tables = self.visible("//*[@id='stdList157_TB']")
+            if len(tables) > 1:
+                raise RuntimeError('Nalezeno více tabulek WHS objednávek. Ověřte přehled v PIP.')
+            return tables[0] if tables else False
+        return self.wait.until(find, 'Tabulku WHS objednávek nelze rozpoznat. Ověřte přehled v PIP.')
+
+    def result_rows(self):
+        return self.visible("./tbody/tr[contains(@class,'wxpListBoxRow')]", self.result_table())
 
     def search_once(self, order):
         from selenium.common.exceptions import TimeoutException
         from selenium.webdriver.common.keys import Keys
         self.overview()
         self.check_origin()
-        field = self.by_id('stdEditField84_T')
-        field.send_keys(Keys.CONTROL, 'a')
-        field.send_keys(order)
-        field.send_keys(Keys.TAB)
-        if field.get_property('value') != order:
+        def fill(field):
+            field.send_keys(Keys.CONTROL, 'a')
+            field.send_keys(order)
+            field.send_keys(Keys.TAB)
+        self.interact(self.ready_overview, fill, 'WHS order')
+        if self.read(lambda: self.by_id('stdEditField84_T').get_property('value')) != order:
             raise RuntimeError('Vyhledavaci pole neodpovida zadani.')
-        self.text('wxpButtonText', 'Hledat').click()
+        self.click_text('wxpButtonText', 'Hledat')
         def result(_):
-            rows = self.visible("//*[@id='stdList157_TB']/tbody/tr[contains(@class,'wxpListBoxRow')]")
+            rows = self.result_rows()
             if len(rows) > 1:
                 raise RuntimeError('Nalezeno vice vysledku. Overte WHS objednavku rucne.')
             return rows[0] if len(rows) == 1 else False
@@ -216,7 +381,7 @@ class Pip:
             self.check_origin()
             if self.logged_out():
                 raise RuntimeError('Prihlaseni vyprselo behem hledani.') from None
-            self.by_id('stdList157_TB')
+            self.result_table()
             row = result(self.d)
             if row:
                 return row
@@ -235,13 +400,18 @@ class Pip:
                 time.sleep(SEARCH_RETRY_DELAY)
 
     def open_order(self, order):
-        row = self.find_order(order)
-        cells = self.visible(".//div[@class='wxpListBoxText']", row)
-        if not cells:
-            raise RuntimeError('Chybi bunka vysledku.')
-        cells[0].click()
+        self.find_order(order)
+        def current_cell():
+            rows = self.result_rows()
+            if len(rows) > 1:
+                raise RuntimeError('Nalezeno vice vysledku. Overte WHS objednavku rucne.')
+            if not rows:
+                return None
+            cells = self.visible(".//div[@class='wxpListBoxText']", rows[0])
+            return cells[0] if cells else None
+        self.interact(current_cell, lambda e: e.click(), 'Otevření WHS objednávky')
         self.identity(order)  # Never modify a stale search result.
-        self.text('wxpPagesPageText', 'Registrace HW').click()
+        self.click_text('wxpPagesPageText', 'Registrace HW')
         self.by_id('stdDropDownListField512_T')
 
     def process(self, order, execute):
@@ -254,19 +424,20 @@ class Pip:
             return 'JIZ_HOTOVO'
         if self.journal.uncertain(order):
             raise RuntimeError('Predchozi odeslani je nejiste; overte WHS objednavku rucne. Opakovani blokovano.')
-        if self.status() != SOURCE:
+        if status_value(self.status()) != status_value(SOURCE):
             raise RuntimeError('Neocekavany vychozi stav: ' + self.status())
         self.text('wxpButtonText', INSTALL)
         if not execute:
             self.by_id('stdDropDownListField512_B1')
             return 'KONTROLA_OK'
-        self.by_id('stdDropDownListField512_B1').click()
-        self.text('wxpDropDownText', SUCCESS, self.by_id('stdDropDownListField512_DD')).click()
+        self.interact(lambda: self.by_id('stdDropDownListField512_B1'), lambda e: e.click(), 'Výsledek instalace zásuvky')
+        self.interact(lambda: self.text('wxpDropDownText', SUCCESS, self.by_id('stdDropDownListField512_DD')),
+                      lambda e: e.click(), SUCCESS)
         self.wait.until(lambda _: self.by_id('stdDropDownListField512_T').get_property('value') == SUCCESS)
         self.identity(order)
-        if self.status() != SOURCE:
+        if status_value(self.status()) != status_value(SOURCE):
             raise RuntimeError('Vychozi stav se zmenil.')
-        self.text('wxpButtonText', INSTALL).click()
+        self.click_text('wxpButtonText', INSTALL)
         yes = self.text('weButtonDefaultLightText', 'Ano', self.one(dialog_xpath()))
         self.identity(order)
         self.journal.write(order, 'ODESILANI')
@@ -279,6 +450,11 @@ class Pip:
         return 'HOTOVO'
 
     def process_with_session(self, order, execute):
+        if getattr(self, 'workflow', 'realizace') == 'all':
+            from hw_workflow import run_workflow
+            if self.logged_out():
+                self.ensure_session()
+            return run_workflow(self, order, execute, self.order_modes.get(order, 'all'))
         try:
             if self.logged_out():
                 self.ensure_session()
@@ -291,9 +467,13 @@ class Pip:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='WHS Asistent')
+    parser = argparse.ArgumentParser(description='WHS Asistent', add_help=False,
+                                     allow_abbrev=False, epilog=USAGE,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-h', '--help', '--h', action='help', help='Zobrazit nápovědu a použití.')
     parser.add_argument('--instance')
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--workflow', choices=('all', 'realizace', 'hw'), default='all', help=argparse.SUPPRESS)
     parser.add_argument('--driver')
     parser.add_argument('--timeout', type=int, default=30)
     args = parser.parse_args()
@@ -315,27 +495,48 @@ def main():
     service_options = {'popen_kw': {'creation_flags': subprocess.CREATE_NEW_PROCESS_GROUP}} if os.name == 'nt' else {}
     if args.driver:
         service_options['executable_path'] = args.driver
-    driver = webdriver.Edge(options=options, service=Service(**service_options))
+    driver = open_browser(entry['url'], options, Service(**service_options))
     journal = Journal(args.instance, entry['url'])
-    pip = Pip(driver, entry, journal, args.timeout)
+    if args.workflow == 'hw':
+        from hw_workflow import HardwarePip
+        pip = HardwarePip(driver, entry, journal, args.timeout)
+    else:
+        pip = Pip(driver, entry, journal, args.timeout)
+    pip.workflow = args.workflow
     try:
         print('INSTANCE:', args.instance, entry['url'])
         notice('ZPRACOVANI' if args.execute else 'REZIM: KONTROLA BEZ ZMEN')
-        driver.get(entry['url'])
+        if args.workflow == 'all':
+            print('WHS order = celý postup; WHS order --r = pouze realizace zásuvky. Nápověda: --help / --h.')
+            print('Celý postup zahrnuje HW až po registraci CM a uzavření i před termínem.')
+        if args.workflow == 'hw':
+            notice('INSTALACE HW A UZAVŘENÍ WHS OBJEDNÁVKY')
+            print('Potvrzení dávky zahrnuje i dokončení před termínem realizace.')
         pip.ensure_session()
+        order_input = OrderInput()
         while True:
-            print('Vlozte WHS order. Prazdny radek spusti davku. Ctrl+C ukonci zpracovani.')
+            print('Vlozte WHS order. Prazdny radek spusti davku. Ctrl+C během dávky přeruší automat; při zadávání ukončí zpracování.')
             lines = []
             while True:
-                line = input()
+                line = order_input.read()
+                if show_help(line):
+                    continue
                 if not line.strip():
                     break
                 lines.append(line)
-            orders = extract_ids('\n'.join(lines))
+            try:
+                pip.order_modes = extract_orders('\n'.join(lines))
+                orders = list(pip.order_modes)
+            except ValueError as error:
+                notice(str(error), 'warning')
+                continue
             if not orders:
                 notice('Nenalezena WHS ID.', 'warning')
                 continue
             print('Instance:', args.instance, entry['url'], 'WHS objednávky:', ', '.join(orders))
+            if args.workflow == 'all':
+                for order in orders:
+                    print(order, '– pouze realizace' if pip.order_modes[order] == 'realizace' else '– celý postup')
             if args.execute and input('Potvrdit davku? [y/n]: ').strip().lower() != 'y':
                 continue
             try:
@@ -353,22 +554,40 @@ def main():
                     journal.write(order, result)
                     results.append((order, result))
                     if result != 'NEDOHLEDANO':
-                        print(order, accent(result, 'success'))
+                        print(order, accent(result, 'warning' if result in ('VYZADUJE_OVERENI', 'CEKA_NA_CM') else 'success'))
                     pip.overview()
                 except KeyboardInterrupt:
-                    print_teams(results, args.execute)
-                    raise
+                    journal.write(order, 'PRERUSENO')
+                    action = pause_batch(pip, orders[index + 1:])
+                    if action == 'continue':
+                        continue
+                    if action == 'exit':
+                        driver.__dict__['_whs_force_close'] = True
+                        print_teams(results, args.execute)
+                        return
+                    break
                 except Exception as error:
                     message = str(error).splitlines()[0] if str(error) else type(error).__name__
                     journal.write(order, 'CHYBA: ' + message)
                     pip.show()
                     print(order, accent('CHYBA:', 'error'), message)
                     print('Nezpracovany zbytek davky:', ', '.join(orders[index + 1:]) or 'zadny')
-                    print_teams(results, args.execute)
-                    results.clear()
-                    input('Overte aktualni WHS objednavku v Edge, zavrete modal a vratte se na prehled. Pak Enter: ')
-                    pip.by_id('stdEditField84_T')
-                    pip.hide()
+                    try:
+                        proceed = recover_batch(pip, orders[index + 1:])
+                    except KeyboardInterrupt:
+                        action = pause_batch(pip, orders[index + 1:])
+                        if action == 'continue':
+                            continue
+                        if action == 'exit':
+                            driver.__dict__['_whs_force_close'] = True
+                            print_teams(results, args.execute)
+                            return
+                        break
+                    except EOFError:
+                        print_teams(results, args.execute)
+                        raise
+                    if proceed:
+                        continue
                     break
             print_teams(results, args.execute)
             if teams_text(results, args.execute):
