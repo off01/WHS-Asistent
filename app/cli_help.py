@@ -18,6 +18,8 @@ Příklad smíšené dávky:
 
 HW se provádí až ve stavu Registrace CM provedena a s vyplněným údajem MAC.
 Při čekání na CM zadejte stejné ID znovu po registraci; proces naváže HW.
+Realizace zrušena je konečný stav (např. nelze technicky realizovat / Zjištěn NSTD).
+Výsledek REALIZACE_ZRUSENA přeskočí další kroky a dávka pokračuje další objednávkou.
 Celý postup zahrnuje i potvrzení uzavření před termínem realizace.
 Výsledek HW a uzavření zatím ověřujete ručně přes y/n.
 

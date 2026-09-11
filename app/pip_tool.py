@@ -14,6 +14,7 @@ from cli_help import USAGE, show_help
 from order_input import OrderInput
 
 SUCCESS = 'Úspěšně provedena'
+CANCELLED = 'Realizace zrušena'
 TARGET = 'WHS Instalace - Čeká se na odpověď WHS partnera'
 SOURCE = 'WHS Instalace - Čeká na přiřazení'
 INSTALL = 'Instalace WHS - Zásuvka'
@@ -179,7 +180,7 @@ class Journal:
                 row = json.loads(line)
                 if row.get('url', 'https://pip-sys2.vodafone.cz/').rstrip('/') != self.url.rstrip('/') or row['order'] != order:
                     continue
-                if row['result'] in ('ODESILANI', 'NEJISTE', 'HOTOVO', 'JIZ_HOTOVO'):
+                if row['result'] in ('ODESILANI', 'NEJISTE', 'HOTOVO', 'JIZ_HOTOVO', 'REALIZACE_ZRUSENA'):
                     state = row['result']
         return state in ('ODESILANI', 'NEJISTE')
 
@@ -368,7 +369,18 @@ class Pip:
         self.interact(self.ready_overview, fill, 'WHS order')
         if self.read(lambda: self.by_id('stdEditField84_T').get_property('value')) != order:
             raise RuntimeError('Vyhledavaci pole neodpovida zadani.')
-        self.click_text('wxpButtonText', 'Hledat')
+        try:
+            self.click_text('wxpButtonText', 'Hledat')
+        except TimeoutException:
+            # Search is read-only. A minimized or rebuilding page can stop
+            # accepting clicks; recover once without replaying a business action.
+            notice('Hledat není připravené. Zobrazím Edge a jednou zopakuji hledání.', 'warning')
+            self.check_origin()
+            self.show()
+            self.ready_overview()
+            if self.read(lambda: self.by_id('stdEditField84_T').get_property('value')) != order:
+                raise RuntimeError('Vyhledavaci pole se zmenilo. Hledani nebylo opakovano.') from None
+            self.click_text('wxpButtonText', 'Hledat')
         def result(_):
             rows = self.result_rows()
             if len(rows) > 1:
@@ -411,6 +423,8 @@ class Pip:
             return cells[0] if cells else None
         self.interact(current_cell, lambda e: e.click(), 'Otevření WHS objednávky')
         self.identity(order)  # Never modify a stale search result.
+        if status_value(self.status()) == CANCELLED:
+            return
         self.click_text('wxpPagesPageText', 'Registrace HW')
         self.by_id('stdDropDownListField512_T')
 
@@ -420,6 +434,8 @@ class Pip:
         except OrderNotFound:
             notice(f'{order} NEDOHLEDANO – ověřte WHS objednávku ručně v systému.', 'warning')
             return 'NEDOHLEDANO'
+        if status_value(self.status()) == CANCELLED:
+            return 'REALIZACE_ZRUSENA'
         if self.completed(order):
             return 'JIZ_HOTOVO'
         if self.journal.uncertain(order):
@@ -443,11 +459,12 @@ class Pip:
         self.journal.write(order, 'ODESILANI')
         try:
             yes.click()
-            self.wait.until(lambda _: self.completed(order), 'Cilovy stav nebyl potvrzen.')
+            self.wait.until(lambda _: self.completed(order) or status_value(self.status()) == CANCELLED,
+                            'Cilovy stav nebyl potvrzen.')
         except Exception:
             self.journal.write(order, 'NEJISTE')
             raise RuntimeError('Nejisty vysledek po Ano. Davka zastavena; overte PIP.') from None
-        return 'HOTOVO'
+        return 'REALIZACE_ZRUSENA' if status_value(self.status()) == CANCELLED else 'HOTOVO'
 
     def process_with_session(self, order, execute):
         if not execute:
@@ -479,6 +496,8 @@ class Pip:
         self.identity(order)
         state = status_value(self.status())
         print(f'{order}: aktuální stav – {state}')
+        if state == CANCELLED:
+            return 'REALIZACE_ZRUSENA'
         return 'KONTROLA_OK'
 
 
@@ -602,7 +621,9 @@ def main():
                     result = pip.process_with_session(order, args.execute)
                     journal.write(order, result)
                     results.append((order, result))
-                    if result != 'NEDOHLEDANO':
+                    if result == 'REALIZACE_ZRUSENA':
+                        print(order, '– Realizace zrušena')
+                    elif result != 'NEDOHLEDANO':
                         print(order, accent(result, 'warning' if result in ('VYZADUJE_OVERENI', 'CEKA_NA_CM') else 'success'))
                     pip.overview()
                 except KeyboardInterrupt:

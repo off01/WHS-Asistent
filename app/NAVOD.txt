@@ -12,6 +12,7 @@ Vkladejte WHS nejlepe po jednom na radek. Prazdny radek spusti davku. Potvrzeni 
 --help nebo --h zobrazi napovedu. Sipky nahoru/dolu vybíraji historii WHS tohoto behu.
 Postup: Ceka na prirazeni -> realizace zasuvky -> Ceka se na odpoved WHS partnera -> Registrace CM provedena -> HW -> uzavreni.
 Pred registraci CM se HW neprovadi. Pri CEKA_NA_CM zadejte stejne ID znovu po registraci. Pro HW musi byt MAC neprazdna; format se nekontroluje.
+Realizace zrusena je konecny stav. Pri kontrole i zpracovani vrati REALIZACE_ZRUSENA a pokracuje dalsim WHS bez instalace a uzavreni. Nezahrnuje se mezi uspesne dokoncene objednavky.
 HW a uzavreni zatim vyzaduji rucni overeni vysledku y/n. Cely postup potvrzuje i uzavreni pred terminem. Zpravy o dokonceni obsahuji pouze potvrzene vysledky; samotna realizace ma vlastni text.
 Ctrl+C behem davky prerusi automat a ponecha Edge ke kontrole. Pri chybe lze preskocit objednavku a po overeni prehledu pokracovat.
 Pri zadavani WHS napiste .. nebo stisknete Ctrl+C pro navrat do menu bez zavreni Edge. Volba 1 nebo 2 prepne rezim; rozepsana davka i historie zustanou zachovane. Volba 0 v tomto menu ukonci beh a zavre Edge.

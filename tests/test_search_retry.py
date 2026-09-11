@@ -71,6 +71,48 @@ class RetryTests(unittest.TestCase):
         with self.assertRaises(tool.OrderNotFound):
             self.search_pip([]).search_once('WHS_SO_00000000001')
 
+    def recovering_search(self):
+        pip = self.search_pip([Mock()])
+        pip.show = Mock()
+        pip.ready_overview = Mock()
+        pip.wait.until.side_effect = None
+        pip.wait.until.return_value = pip.result_rows.return_value[0]
+        return pip
+
+    def test_search_click_timeout_recovers_once_in_same_browser(self):
+        pip = self.recovering_search()
+        pip.click_text.side_effect = [TimeoutException('Hledat'), None]
+        with patch.object(tool, 'notice'):
+            self.assertIs(pip.search_once('WHS_SO_00000000001'), pip.result_rows.return_value[0])
+        self.assertEqual(pip.click_text.call_args_list,
+                         [call('wxpButtonText', 'Hledat'), call('wxpButtonText', 'Hledat')])
+        pip.show.assert_called_once()
+        pip.ready_overview.assert_called_once()
+        pip.d.refresh.assert_not_called()
+
+    def test_search_click_recovery_is_bounded(self):
+        pip = self.recovering_search()
+        pip.click_text.side_effect = TimeoutException('Hledat')
+        with patch.object(tool, 'notice'), self.assertRaises(TimeoutException):
+            pip.search_once('WHS_SO_00000000001')
+        self.assertEqual(pip.click_text.call_count, 2)
+
+    def test_search_recovery_rejects_changed_order(self):
+        pip = self.recovering_search()
+        pip.click_text.side_effect = TimeoutException('Hledat')
+        pip.by_id.return_value.get_property.side_effect = ['WHS_SO_00000000001', 'WHS_SO_00000000002']
+        with patch.object(tool, 'notice'), self.assertRaisesRegex(RuntimeError, 'pole se zmenilo'):
+            pip.search_once('WHS_SO_00000000001')
+        pip.click_text.assert_called_once()
+
+    def test_search_recovery_does_not_click_through_unready_overview(self):
+        pip = self.recovering_search()
+        pip.click_text.side_effect = TimeoutException('Hledat')
+        pip.ready_overview.side_effect = TimeoutException('modal remains')
+        with patch.object(tool, 'notice'), self.assertRaises(TimeoutException):
+            pip.search_once('WHS_SO_00000000001')
+        pip.click_text.assert_called_once()
+
     def test_changed_table_id_is_accepted(self):
         from selenium.webdriver.support.ui import WebDriverWait
         pip = self.pip()

@@ -1,6 +1,6 @@
 """HW installation and closure; unchanged headers require human verification."""
 from console_style import notice
-from pip_tool import Pip, OrderNotFound, SUCCESS, status_value
+from pip_tool import Pip, OrderNotFound, SUCCESS, CANCELLED, status_value
 
 INSTALL_HW = 'Instalace WHS - HW'
 CLOSE_ORDER = 'Objednávka úspěšně dokončena'
@@ -21,6 +21,8 @@ def run_workflow(pip, order, execute, mode):
         notice(f'{order} NEDOHLEDANO – ověřte WHS objednávku ručně v systému.', 'warning')
         return 'NEDOHLEDANO'
     state = status_value(pip.status())
+    if state == CANCELLED:
+        return 'REALIZACE_ZRUSENA'
     if state == 'Čeká na přiřazení':
         result = Pip.process(pip, order, execute)
         if result not in ('HOTOVO', 'JIZ_HOTOVO'):
@@ -28,6 +30,8 @@ def run_workflow(pip, order, execute, mode):
         # Resolve the socket submission marker before entering the HW phase.
         pip.journal.write(order, result)
         state = status_value(pip.status())
+    if state == CANCELLED:
+        return 'REALIZACE_ZRUSENA'
     if state == 'Čeká se na odpověď WHS partnera':
         notice(f'{order}: čeká na registraci CM. Po registraci zadejte stejné WHS ID znovu; proces naváže HW.', 'warning')
         return 'CEKA_NA_CM'
@@ -143,6 +147,8 @@ class HardwarePip(Pip):
         except OrderNotFound:
             notice(f'{order} NEDOHLEDANO – ověřte WHS objednávku ručně v systému.', 'warning')
             return 'NEDOHLEDANO'
+        if status_value(self.status()) == CANCELLED:
+            return 'REALIZACE_ZRUSENA'
         if self.stage_state(order, 'UZAVRENI'):
             if not execute:
                 return 'VYZADUJE_OVERENI'
