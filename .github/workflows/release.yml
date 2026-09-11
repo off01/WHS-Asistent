@@ -1,0 +1,55 @@
+name: Vydat WHS Asistenta
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: "1"
+
+    steps:
+      - name: Stahnout zdrojovy kod
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Pripravit Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Nainstalovat zavislosti
+        run: python -m pip install -r app/requirements.txt
+
+      - name: Spustit testy
+        run: python -B -m unittest discover -s tests -q
+
+      - name: Vytvorit prenosny ZIP
+        run: ./package.ps1
+
+      - name: Publikovat vydani s ZIPem
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $packages = @(Get-ChildItem -LiteralPath ./dist -Filter '*.zip')
+          if ($packages.Count -ne 1) {
+            throw 'Ocekavan prave jeden ZIP.'
+          }
+          gh release create "$env:RELEASE_TAG" "$($packages[0].FullName)" --verify-tag --title "WHS Asistent $env:RELEASE_TAG" --generate-notes
