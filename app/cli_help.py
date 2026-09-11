@@ -3,6 +3,8 @@ HELP_COMMANDS = ('--help', '--h', '-h')
 USAGE = '''Použití WHS Asistenta
 
 1 – Zpracovat WHS objednávky; 2 – Kontrola bez změn.
+Volba 2 pouze vypíše aktuální stav. Neprovádí realizaci, HW ani uzavření;
+parametr --r v tomto režimu nemění rozsah kontroly.
 Vkládejte WHS order, nejlépe jeden na řádek. Prázdný řádek spustí dávku.
 Před zpracováním ověřte rozsah jednotlivých WHS a potvrďte y/n.
 

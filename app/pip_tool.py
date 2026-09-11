@@ -450,6 +450,10 @@ class Pip:
         return 'HOTOVO'
 
     def process_with_session(self, order, execute):
+        if not execute:
+            if self.logged_out():
+                self.ensure_session()
+            return self.inspect_order(order)
         if getattr(self, 'workflow', 'realizace') == 'all':
             from hw_workflow import run_workflow
             if self.logged_out():
@@ -464,6 +468,18 @@ class Pip:
                 raise
             self.ensure_session()
             return self.process(order, execute)
+
+    def inspect_order(self, order):
+        """Read-only branch: never enter a submission workflow."""
+        try:
+            self.open_order(order)
+        except OrderNotFound:
+            notice(f'{order} NEDOHLEDANO – ověřte WHS objednávku ručně v systému.', 'warning')
+            return 'NEDOHLEDANO'
+        self.identity(order)
+        state = status_value(self.status())
+        print(f'{order}: aktuální stav – {state}')
+        return 'KONTROLA_OK'
 
 
 def main():
@@ -506,10 +522,12 @@ def main():
     try:
         print('INSTANCE:', args.instance, entry['url'])
         notice('ZPRACOVANI' if args.execute else 'REZIM: KONTROLA BEZ ZMEN')
-        if args.workflow == 'all':
+        if not args.execute:
+            print('Pouze načtu aktuální stav objednávek. Realizace, instalace HW ani uzavření se neprovádí.')
+        if args.execute and args.workflow == 'all':
             print('WHS order = celý postup; WHS order --r = pouze realizace zásuvky. Nápověda: --help / --h.')
             print('Celý postup zahrnuje HW až po registraci CM a uzavření i před termínem.')
-        if args.workflow == 'hw':
+        if args.execute and args.workflow == 'hw':
             notice('INSTALACE HW A UZAVŘENÍ WHS OBJEDNÁVKY')
             print('Potvrzení dávky zahrnuje i dokončení před termínem realizace.')
         pip.ensure_session()
@@ -534,7 +552,7 @@ def main():
                 notice('Nenalezena WHS ID.', 'warning')
                 continue
             print('Instance:', args.instance, entry['url'], 'WHS objednávky:', ', '.join(orders))
-            if args.workflow == 'all':
+            if args.execute and args.workflow == 'all':
                 for order in orders:
                     print(order, '– pouze realizace' if pip.order_modes[order] == 'realizace' else '– celý postup')
             if args.execute and input('Potvrdit davku? [y/n]: ').strip().lower() != 'y':
@@ -549,7 +567,7 @@ def main():
             results = []
             for index, order in enumerate(orders):
                 try:
-                    print(order, 'ZPRACOVAVAM')
+                    print(order, 'ZPRACOVAVAM' if args.execute else 'KONTROLUJI BEZ ZMEN')
                     result = pip.process_with_session(order, args.execute)
                     journal.write(order, result)
                     results.append((order, result))

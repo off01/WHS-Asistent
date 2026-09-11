@@ -7,6 +7,26 @@ from urllib.parse import urlsplit
 from console_style import notice
 
 DATA = Path(__file__).resolve().parent.parent / 'data'
+DEFAULT_INSTANCES = {
+    'sys2': 'https://pip-sys2.vodafone.cz/',
+    'int': 'https://pip-test.vodafone.cz/',
+    'pre': 'https://pip-pre.vodafone.cz/',
+}
+
+
+def common_credentials(instances):
+    pairs = {(entry.get('login'), entry.get('password'))
+             for entry in instances.values() if isinstance(entry, dict)
+             and isinstance(entry.get('login'), str) and entry.get('login')
+             and isinstance(entry.get('password'), str) and entry.get('password')}
+    return next(iter(pairs)) if len(pairs) == 1 else None
+
+
+def add_presets(config, credentials):
+    login, password = credentials
+    for name, url in DEFAULT_INSTANCES.items():
+        config['instances'].setdefault(name, dict(url=url, login=login, password=password))
+
 
 
 def read_config():
@@ -19,6 +39,9 @@ def read_config():
         raise ValueError('Konfiguraci nelze nacist; nebyla prepsana.') from None
     if not isinstance(result, dict) or not isinstance(result.get('instances'), dict):
         raise ValueError('Neplatny format konfigurace.')
+    credentials = common_credentials(result['instances'])
+    if credentials:
+        add_presets(result, credentials)
     return result
 
 
@@ -53,36 +76,28 @@ def ask(label, default=''):
 def wizard():
     notice('WHS ASISTENT - nastaveni')
     print('Heslo se pri psani nezobrazuje. V lokalnim config.json bude ulozene jako text; soubor nesdilejte.')
-    while True:
-        config = read_config()
-        print('Instance:', ', '.join(config['instances']) or 'zadne')
-        name = ask('Nazev instance (napr. sys2)')
-        if not name:
-            continue
-        old = config['instances'].get(name, {})
-        if not isinstance(old, dict):
-            raise ValueError('Neplatna existujici instance.')
-        url = ask('HTTPS adresa PIP', old.get('url', 'https://pip-sys2.vodafone.cz/' if name == 'sys2' else ''))
-        if not valid_url(url):
-            notice('Neplatna HTTPS adresa.', 'error')
-            continue
-        login = ask('Login', old.get('login', ''))
-        if not login:
-            continue
-        keep = old.get('url') == url and old.get('login') == login and bool(old.get('password'))
-        password = getpass.getpass('Heslo' + (' (Enter ponecha ulozene)' if keep else '') + ': ')
-        if not password and keep:
-            password = old['password']
-        elif not password or password != getpass.getpass('Heslo znovu: '):
-            notice('Prazdne heslo nebo hesla nesouhlasi. Nic nebylo ulozeno.', 'warning')
-            continue
-        print(f'Instance: {name}\nAdresa: {url}\nLogin: {login}')
-        if ask('Ulozit? [y/n]').lower() == 'y':
-            config['instances'][name] = dict(old, url=url, login=login, password=password)
-            save_config(config)
-            notice('Ulozeno.', 'success')
-        if ask('Nastavit dalsi instanci? [y/n]').lower() != 'y':
-            return
+    config = read_config()
+    credentials = common_credentials(config['instances'])
+    if credentials:
+        print('Pouziji jiz ulozene prihlasovaci udaje.')
+    else:
+        while True:
+            login = ask('Login pro sys2, int a pre')
+            if not login:
+                continue
+            password = getpass.getpass('Heslo: ')
+            if not password or password != getpass.getpass('Heslo znovu: '):
+                notice('Prazdne heslo nebo hesla nesouhlasi. Nic nebylo ulozeno.', 'warning')
+                continue
+            credentials = (login, password)
+            break
+    add_presets(config, credentials)
+    for name in DEFAULT_INSTANCES:
+        print(f"Instance: {name} – {config['instances'][name]['url']}")
+    print('Existujici instance a jejich prihlasovaci udaje zustanou zachovany.')
+    if ask('Ulozit? [y/n]').lower() == 'y':
+        save_config(config)
+        notice('Ulozeno.', 'success')
 
 
 if __name__ == '__main__':

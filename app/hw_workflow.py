@@ -160,5 +160,7 @@ class HardwarePip(Pip):
     def process_with_session(self, order, execute):
         if self.logged_out():
             self.ensure_session()
+        if not execute:
+            return self.inspect_order(order)
         # A server write may have succeeded despite logout or a driver error.
         return self.process(order, execute)

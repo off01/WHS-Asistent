@@ -4,6 +4,8 @@ Windows 10/11 x64, Microsoft Edge a internet pri prvnim spusteni.
 Python neni nutne instalovat do Windows. Spoustec stahne uv, Python 3.13 a zavislosti do .runtime. Nemeni systemovy PATH. Stahovani vyzaduje pristup na GitHub, PyPI a servery Microsoftu pro EdgeDriver.
 Prvni spusteni nabidne nastaveni instance a prihlaseni. Konfigurace a vysledky jsou v data; heslo je ulozene jako text. Tuto slozku nesdilejte.
 1 – Zpracovani WHS objednavek. 2 – Kontrola bez zmen.
+Volba 2 pouze vypise aktualni stav objednavky. Neprovadi realizaci, HW ani uzavreni, ani pri zadani --r.
+Login a heslo se zadavaji jednou pro prednastavene sys2, int a pre. Ze stare konfigurace se znovu pouziji shodne udaje; existujici instance se neprepisuji.
 WHS_SO_08000006785 znamena cely postup.
 WHS_SO_08000006786 --r znamena pouze realizaci zasuvky (--realizace funguje take).
 Vkladejte WHS nejlepe po jednom na radek. Prazdny radek spusti davku. Potvrzeni y/n. WHS ma prefix WHS_SO_ a presne 11 cislic.
