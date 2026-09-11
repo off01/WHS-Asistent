@@ -23,7 +23,11 @@ Výsledek HW a uzavření zatím ověřujete ručně přes y/n.
 
 Příkazy na samostatném řádku v menu nebo při vkládání WHS:
   --help, --h, -h    Tato nápověda. Rozepsaná dávka zůstává zachovaná.
-  Ctrl+C            Během dávky přeruší automat; při zadávání ukončí zpracování.
+  ..                Při zadávání WHS vrátí do menu, Edge zůstane otevřený.
+  Ctrl+C            Během dávky přeruší automat; při zadávání WHS vrátí do menu.
+
+V menu otevřeného PIP zvolte 1 nebo 2 pro změnu režimu bez nového přihlášení.
+Rozepsaná dávka i historie zůstanou zachované. Volba 0 ukončí běh a zavře Edge.
 
 Při zadávání WHS listují šipky nahoru/dolů historií tohoto běhu.
 Vybraný příkaz můžete upravit a potvrdit Enterem. Historie zůstává mezi dávkami,

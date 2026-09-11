@@ -482,6 +482,24 @@ class Pip:
         return 'KONTROLA_OK'
 
 
+def session_menu():
+    """Choose another mode without ending the browser session."""
+    notice('MENU – PIP zůstává otevřený a přihlášený')
+    print('1 – Zpracovat WHS objednávky\n2 – Kontrola bez změn\n0 – Ukončit a zavřít prohlížeč')
+    while True:
+        try:
+            choice = input('Vyberte: ').strip()
+        except KeyboardInterrupt:
+            print('\nPro ukončení a zavření prohlížeče zvolte 0.')
+            continue
+        if choice == '0':
+            return None
+        if choice in ('1', '2'):
+            return choice == '1'
+        if not show_help(choice):
+            print('Vyberte 1, 2 nebo 0.')
+
+
 def main():
     parser = argparse.ArgumentParser(description='WHS Asistent', add_help=False,
                                      allow_abbrev=False, epilog=USAGE,
@@ -533,10 +551,22 @@ def main():
         pip.ensure_session()
         order_input = OrderInput()
         while True:
-            print('Vlozte WHS order. Prazdny radek spusti davku. Ctrl+C během dávky přeruší automat; při zadávání ukončí zpracování.')
+            notice('REŽIM: ZPRACOVÁNÍ' if args.execute else 'REŽIM: KONTROLA BEZ ZMĚN')
+            print('Vložte WHS order. Prázdný řádek spustí dávku. .. nebo Ctrl+C při zadávání vrátí do menu bez zavření Edge.')
             lines = []
             while True:
-                line = order_input.read()
+                try:
+                    line = order_input.read()
+                except KeyboardInterrupt:
+                    line = '..'
+                if line.strip() == '..':
+                    selected_mode = session_menu()
+                    if selected_mode is None:
+                        return
+                    args.execute = selected_mode
+                    notice('REŽIM: ZPRACOVÁNÍ' if args.execute else 'REŽIM: KONTROLA BEZ ZMĚN')
+                    print(f'Rozepsaná dávka zachována ({len(lines)} řádků). Pokračujte v zadávání; prázdný řádek spustí dávku.')
+                    continue
                 if show_help(line):
                     continue
                 if not line.strip():
@@ -551,6 +581,7 @@ def main():
             if not orders:
                 notice('Nenalezena WHS ID.', 'warning')
                 continue
+            notice('REŽIM: ZPRACOVÁNÍ' if args.execute else 'REŽIM: KONTROLA BEZ ZMĚN')
             print('Instance:', args.instance, entry['url'], 'WHS objednávky:', ', '.join(orders))
             if args.execute and args.workflow == 'all':
                 for order in orders:

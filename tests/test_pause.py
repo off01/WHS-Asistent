@@ -41,9 +41,8 @@ class PauseTests(unittest.TestCase):
              patch.object(tool, 'Journal', return_value=journal), \
              patch.object(tool, 'close_browser') as close, \
              patch.object(tool, 'pause_batch', side_effect=pause), \
-             patch('builtins.input', side_effect=['WHS_SO_00000000001', 'WHS_SO_00000000002', '', 'y', '', KeyboardInterrupt()]):
-            with self.assertRaises(KeyboardInterrupt):
-                tool.main()
+             patch('builtins.input', side_effect=['WHS_SO_00000000001', 'WHS_SO_00000000002', '', 'y', '', '..', '0']):
+            tool.main()
         self.assertEqual(pip.process_with_session.call_args_list, [call('WHS_SO_00000000001', True), call('WHS_SO_00000000002', True)])
         journal.write.assert_any_call('WHS_SO_00000000001', 'PRERUSENO')
         close.assert_called_once()

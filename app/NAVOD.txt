@@ -13,7 +13,8 @@ Vkladejte WHS nejlepe po jednom na radek. Prazdny radek spusti davku. Potvrzeni 
 Postup: Ceka na prirazeni -> realizace zasuvky -> Ceka se na odpoved WHS partnera -> Registrace CM provedena -> HW -> uzavreni.
 Pred registraci CM se HW neprovadi. Pri CEKA_NA_CM zadejte stejne ID znovu po registraci. Pro HW musi byt MAC neprazdna; format se nekontroluje.
 HW a uzavreni zatim vyzaduji rucni overeni vysledku y/n. Cely postup potvrzuje i uzavreni pred terminem. Zpravy o dokonceni obsahuji pouze potvrzene vysledky; samotna realizace ma vlastni text.
-Ctrl+C behem davky prerusi automat a ponecha Edge ke kontrole. Pri chybe lze preskocit objednavku a po overeni prehledu pokracovat. Ctrl+C pri zadavani ukonci zpracovani a zavre Edge.
+Ctrl+C behem davky prerusi automat a ponecha Edge ke kontrole. Pri chybe lze preskocit objednavku a po overeni prehledu pokracovat.
+Pri zadavani WHS napiste .. nebo stisknete Ctrl+C pro navrat do menu bez zavreni Edge. Volba 1 nebo 2 prepne rezim; rozepsana davka i historie zustanou zachovane. Volba 0 v tomto menu ukonci beh a zavre Edge.
 Kazdy beh otevre novy Edge; ulozene relace se neobnovuji. Mezi davkami zustava stejny prohlizec. Nejiste odeslani se automaticky neopakuje. data/vysledky.jsonl nemazte.
 Pri nulovem vysledku probiha az 5 opakovani po 60 sekundach. Chybna nebo nejednoznacna stranka neni nulovy vysledek.
 

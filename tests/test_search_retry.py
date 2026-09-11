@@ -116,7 +116,7 @@ class RetryTests(unittest.TestCase):
         pip.process_with_session.side_effect = ['NEDOHLEDANO', 'HOTOVO']
         journal = Mock()
         driver = Mock()
-        answers = ['WHS_SO_00000000001', '--h', 'WHS_SO_00000000002', '', 'y', '', KeyboardInterrupt()]
+        answers = ['WHS_SO_00000000001', '--h', 'WHS_SO_00000000002', '', 'y', '', '..', '0']
         with patch.object(sys, 'argv', ['pip_tool.py', '--instance', 'test', '--execute']), \
              patch.object(tool, 'read_config', return_value={'instances': {'test': {'url': 'https://example.com/'}}}), \
              patch.object(tool, 'open_browser', return_value=driver), \
@@ -124,8 +124,7 @@ class RetryTests(unittest.TestCase):
              patch.object(tool, 'Journal', return_value=journal), \
              patch.object(tool, 'close_browser') as close, \
              patch('builtins.input', side_effect=answers):
-            with self.assertRaises(KeyboardInterrupt):
-                tool.main()
+            tool.main()
         self.assertEqual(pip.process_with_session.call_args_list,
                          [call('WHS_SO_00000000001', True), call('WHS_SO_00000000002', True)])
         self.assertEqual(journal.write.call_args_list,

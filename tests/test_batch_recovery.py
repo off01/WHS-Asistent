@@ -30,14 +30,13 @@ class RecoveryTests(unittest.TestCase):
         pip = Mock()
         pip.process_with_session.side_effect = ['HOTOVO', RuntimeError('failure'), 'HOTOVO']
         journal = Mock()
-        answers = ['WHS_SO_00000000001', 'WHS_SO_00000000002', 'WHS_SO_00000000003', '', 'y', 'y', '', '', KeyboardInterrupt()]
+        answers = ['WHS_SO_00000000001', 'WHS_SO_00000000002', 'WHS_SO_00000000003', '', 'y', 'y', '', '', '..', '0']
         with patch.object(sys, 'argv', ['pip_tool.py', '--instance', 'test', '--execute']), \
              patch.object(tool, 'read_config', return_value={'instances': {'test': {'url': 'https://example.com/'}}}), \
              patch.object(tool, 'open_browser'), patch.object(tool, 'Pip', return_value=pip), \
              patch.object(tool, 'Journal', return_value=journal), patch.object(tool, 'close_browser'), \
              patch.object(tool, 'print_teams') as report, patch('builtins.input', side_effect=answers):
-            with self.assertRaises(KeyboardInterrupt):
-                tool.main()
+            tool.main()
         self.assertEqual(pip.process_with_session.call_args_list,
                          [call('WHS_SO_00000000001', True), call('WHS_SO_00000000002', True), call('WHS_SO_00000000003', True)])
         report.assert_called_once_with([('WHS_SO_00000000001', 'HOTOVO'), ('WHS_SO_00000000003', 'HOTOVO')], True)
