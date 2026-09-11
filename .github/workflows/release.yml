@@ -40,7 +40,9 @@ jobs:
         run: python -B -m unittest discover -s tests -q
 
       - name: Vytvorit prenosny ZIP
-        run: ./package.ps1
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./package.ps1 -Version "$env:RELEASE_TAG"
 
       - name: Publikovat vydani s ZIPem
         env:
@@ -48,8 +50,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $packages = @(Get-ChildItem -LiteralPath ./dist -Filter '*.zip')
-          if ($packages.Count -ne 1) {
-            throw 'Ocekavan prave jeden ZIP.'
+          $package = Join-Path ./dist ("WHS-Asistent-" + $env:RELEASE_TAG + ".zip")
+          if (-not (Test-Path -LiteralPath $package -PathType Leaf)) {
+            throw 'Chybi ZIP pro vydavanou verzi.'
           }
-          gh release create "$env:RELEASE_TAG" "$($packages[0].FullName)" --verify-tag --title "WHS Asistent $env:RELEASE_TAG" --generate-notes
+          gh release create "$env:RELEASE_TAG" "$package" --verify-tag --title "WHS Asistent $env:RELEASE_TAG" --generate-notes

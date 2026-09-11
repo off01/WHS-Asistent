@@ -26,5 +26,7 @@ app – kod, napoveda a priprava lokalniho prostredi.
 data – soukroma konfigurace a vysledky, nevkladaji se do ZIPu ani Gitu.
 tests a package.ps1 – pouze pro vyvoj; nejsou v uzivatelskem ZIPu.
 package.ps1 vytvori cisty ZIP v dist bez konfigurace, historie, profilu Edge, Pythonu a cache.
+Rucni baleni: .\package.ps1 -Version v0.2.3 vytvori dist/WHS-Asistent-v0.2.3.zip. Verze je povinna; casove razitko se nepouziva. Existujici ZIP stejne verze se neprepisuje.
+GitHub Actions prevezme verzi automaticky z odeslaneho tagu (napr. v0.2.3) a prilozi prave tento ZIP k vydani.
 Stare app/.venv a data/browser_sessions se nepouzivaji. Zustaly lokalne; nejsou soucasti distribuce.
 Po presunu jiz pripravene slozky muze byt potreba obnovit .runtime, protoze Python prostredi muze obsahovat absolutni cesty. Nejsnazsi je rozbalit cisty ZIP v cilovem umisteni a prenest pouze vlastni data.

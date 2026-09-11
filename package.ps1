@@ -1,8 +1,14 @@
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$')]
+    [string]$Version
+)
+
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $dist = Join-Path $PSScriptRoot 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
-$target = Join-Path $dist ('WHS-Asistent-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+$target = Join-Path $dist ('WHS-Asistent-' + $Version + '.zip')
 $zip = [IO.Compression.ZipFile]::Open($target, [IO.Compression.ZipArchiveMode]::Create)
 try {
     $files = @(Get-Item -LiteralPath (Join-Path $PSScriptRoot 'WHS-Asistent.bat'))
